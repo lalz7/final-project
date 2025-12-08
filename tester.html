@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hikvision Middleware Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <style>
+        body { background-color: #f4f6f9; padding: 20px; font-family: 'Segoe UI', sans-serif; }
+        .card { border: none; box-shadow: 0 4px 15px rgba(0,0,0,0.05); border-radius: 12px; }
+        .nav-pills .nav-link.active { background-color: #0d6efd; font-weight: 600; }
+        .status-dot { height: 10px; width: 10px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+        .online { background-color: #28a745; box-shadow: 0 0 8px rgba(40, 167, 69, 0.4); }
+        .offline { background-color: #dc3545; }
+        .img-thumb { 
+            width: 45px; height: 45px; object-fit: cover; border-radius: 6px; 
+            border: 1px solid #dee2e6; background: #fff; cursor: pointer; transition: transform 0.2s;
+        }
+        .img-thumb:hover { transform: scale(1.1); border-color: #0d6efd; }
+    </style>
+</head>
+<body>
+
+<div class="container" style="max-width: 1200px;">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h3 class="fw-bold text-dark mb-0"><i class="bi bi-cpu-fill text-primary"></i> Hikvision Middleware</h3>
+            <p class="text-muted small mb-0">Centralized Management System</p>
+        </div>
+        <span id="api-status" class="badge bg-secondary">Connecting...</span>
+    </div>
+
+    <ul class="nav nav-pills mb-4 bg-white p-2 rounded shadow-sm" id="pills-tab" role="tablist">
+        <li class="nav-item">
+            <button class="nav-link active" id="pills-device-tab" data-bs-toggle="pill" data-bs-target="#pills-device" type="button" onclick="loadDevices()">
+                <i class="bi bi-hdd-network me-2"></i>Devices
+            </button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link" id="pills-user-tab" data-bs-toggle="pill" data-bs-target="#pills-user" type="button" onclick="initUserTab()">
+                <i class="bi bi-people me-2"></i>Users
+            </button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link" id="pills-event-tab" data-bs-toggle="pill" data-bs-target="#pills-event" type="button" onclick="loadEvents()">
+                <i class="bi bi-activity me-2"></i>Live Events
+            </button>
+        </li>
+    </ul>
+
+    <div class="tab-content" id="pills-tabContent">
+        
+        <div class="tab-pane fade show active" id="pills-device">
+            <div class="card">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center py-3">
+                    <h6 class="fw-bold mb-0">Daftar Perangkat</h6>
+                    <button class="btn btn-sm btn-primary" onclick="openDeviceModal()"><i class="bi bi-plus-lg me-1"></i>Tambah</button>
+                </div>
+                <div class="card-body p-0">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="table-light"><tr><th class="ps-4">Nama</th><th>IP Address</th><th>Port</th><th>Status</th><th class="text-end pe-4">Aksi</th></tr></thead>
+                        <tbody id="deviceTableBody"><tr><td colspan="5" class="text-center py-4">Loading...</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="tab-pane fade" id="pills-user">
+            <div class="card h-100">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center py-3 flex-wrap gap-2">
+                    <div class="d-flex align-items-center">
+                        <h6 class="fw-bold mb-0 me-3"><i class="bi bi-database-check me-2"></i>Data User di Alat:</h6>
+                        <select class="form-select form-select-sm" id="deviceSelect" onchange="loadUsersFromDevice(this.value)" style="min-width: 250px;">
+                            <option value="">-- Pilih Device untuk Melihat --</option>
+                        </select>
+                        <button class="btn btn-sm btn-light border ms-2" onclick="refreshUserTab()" title="Refresh"><i class="bi bi-arrow-clockwise"></i></button>
+                    </div>
+                    
+                    <button class="btn btn-sm btn-success" onclick="openUserModal()">
+                        <i class="bi bi-person-plus-fill me-1"></i> Broadcast User Baru
+                    </button>
+                </div>
+                
+                <div class="card-body p-0">
+                    <div class="table-responsive" style="min-height: 400px; max-height: 600px; overflow-y: auto;">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="table-light sticky-top">
+                                <tr>
+                                    <th class="ps-4">ID</th>
+                                    <th>Nama</th>
+                                    <th>Tipe</th>
+                                    <th class="text-end pe-4">Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody id="userTableBody">
+                                <tr><td colspan="4" class="text-center py-5 text-muted">
+                                    <i class="bi bi-arrow-up-circle fs-2 d-block mb-2"></i>
+                                    Silakan pilih device di atas untuk melihat daftar user.
+                                </td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="tab-pane fade" id="pills-event">
+            <div class="card">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center py-3">
+                    <h6 class="fw-bold mb-0">Log Absensi (Real-time & Catch-up)</h6>
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="autoRefresh" checked>
+                        <label class="form-check-label small" for="autoRefresh">Auto-Refresh (3s)</label>
+                    </div>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive" style="max-height: 600px; overflow-y: auto;">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="table-light sticky-top">
+                                <tr>
+                                    <th class="ps-4">Foto</th>
+                                    <th>Waktu</th>
+                                    <th>Nama Device</th>
+                                    <th>ID User</th>
+                                    <th>Info Kesehatan</th>
+                                    <th>Source</th>
+                                </tr>
+                            </thead>
+                            <tbody id="eventTableBody">
+                                <tr><td colspan="6" class="text-center py-5 text-muted">Belum ada data event.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<div class="modal fade" id="deviceModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content shadow">
+            <div class="modal-header bg-light">
+                <h5 class="modal-title fw-bold" id="deviceModalTitle">Device</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4">
+                <form id="deviceForm">
+                    <input type="hidden" id="deviceId">
+                    <div class="mb-3"><label class="form-label small fw-bold">Nama Device</label><input type="text" class="form-control" id="devName" required></div>
+                    <div class="row mb-3">
+                        <div class="col-8"><label class="form-label small fw-bold">IP</label><input type="text" class="form-control font-monospace" id="devIp" required></div>
+                        <div class="col-4"><label class="form-label small fw-bold">Port</label><input type="number" class="form-control font-monospace" id="devPort" value="8000"></div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-6"><label class="form-label small fw-bold">User</label><input type="text" class="form-control" id="devUser" value="admin"></div>
+                        <div class="col-6"><label class="form-label small fw-bold">Pass</label><input type="password" class="form-control" id="devPass" value="admin123"></div>
+                    </div>
+                    <div id="devAlert"></div>
+                    <button type="submit" class="btn btn-primary w-100 mt-3" id="btnDevSave">Simpan & Connect</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="userModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content shadow">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title fw-bold"><i class="bi bi-cloud-upload me-2"></i>Broadcast User Baru</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4">
+                <p class="text-muted small mb-3">User ini akan dikirimkan ke <b>SEMUA</b> device yang aktif secara otomatis.</p>
+                <form id="userForm">
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">ID Karyawan (Unik)</label>
+                        <input type="text" class="form-control" id="userId" placeholder="Cth: 1001" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">Nama Lengkap</label>
+                        <input type="text" class="form-control" id="userName" placeholder="Cth: Budi Santoso" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">Foto Wajah (JPG)</label>
+                        <input type="file" class="form-control" id="userPhoto" accept="image/jpeg, image/jpg">
+                        <div class="form-text small">Wajib upload foto untuk fitur wajah.</div>
+                    </div>
+                    
+                    <input type="datetime-local" id="userStart" class="d-none">
+                    <input type="datetime-local" id="userEnd" class="d-none">
+
+                    <div id="userAlert"></div>
+
+                    <div class="d-grid mt-4">
+                        <button type="submit" class="btn btn-success" id="btnUserSave">
+                            Simpan & Broadcast
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="photoModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content bg-transparent border-0 text-center">
+            <img src="" id="previewImage" class="img-fluid rounded shadow-lg" style="max-height: 80vh;">
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+<script>
+    const API_URL = "http://localhost:8000/api";
+    let deviceModal, userModal, photoModal, refreshInterval;
+
+    document.addEventListener('DOMContentLoaded', () => {
+        deviceModal = new bootstrap.Modal(document.getElementById('deviceModal'));
+        userModal = new bootstrap.Modal(document.getElementById('userModal'));
+        photoModal = new bootstrap.Modal(document.getElementById('photoModal'));
+        setupDefaultTime();
+        loadDevices();
+        
+        startEventPolling();
+        document.getElementById('autoRefresh').addEventListener('change', function() {
+            if(this.checked) startEventPolling(); else clearInterval(refreshInterval);
+        });
+    });
+
+    // --- DEVICES ---
+    async function loadDevices() {
+        try {
+            const res = await fetch(`${API_URL}/devices/`);
+            const data = await res.json();
+            document.getElementById("api-status").className = "badge bg-success";
+            document.getElementById("api-status").innerText = "Online";
+            
+            const tbody = document.getElementById("deviceTableBody");
+            const select = document.getElementById("deviceSelect");
+            
+            tbody.innerHTML = data.length ? "" : "<tr><td colspan='5' class='text-center py-4 text-muted'>Kosong</td></tr>";
+            
+            const currentSelect = select.value;
+            let optionsHtml = '<option value="">-- Pilih Device untuk Melihat --</option>';
+
+            data.forEach(d => {
+                tbody.innerHTML += `
+                    <tr>
+                        <td class="ps-4 fw-bold text-dark">${d.name}</td>
+                        <td><span class="badge bg-light text-dark border font-monospace">${d.ip_address}</span></td>
+                        <td>${d.port}</td>
+                        <td><span class="status-dot ${d.is_active?'online':'offline'}"></span>${d.is_active?'Active':'Off'}</td>
+                        <td class="text-end pe-4">
+                            <button class="btn btn-warning btn-sm btn-action text-white me-1" onclick='editDevice(${JSON.stringify(d)})'><i class="bi bi-pencil-fill"></i></button>
+                            <button class="btn btn-danger btn-sm btn-action" onclick="delDevice(${d.id})"><i class="bi bi-trash-fill"></i></button>
+                        </td>
+                    </tr>`;
+                
+                optionsHtml += `<option value="${d.ip_address}" ${d.ip_address === currentSelect ? 'selected' : ''}>${d.name} (${d.ip_address})</option>`;
+            });
+            
+            select.innerHTML = optionsHtml;
+
+        } catch(e) { 
+            document.getElementById("api-status").className = "badge bg-danger";
+            document.getElementById("api-status").innerText = "Offline";
+        }
+    }
+
+    // --- USERS ---
+    function initUserTab() { loadDevices(); }
+    function refreshUserTab() { const ip = document.getElementById("deviceSelect").value; if(ip) loadUsersFromDevice(ip); }
+    function openUserModal() { 
+        document.getElementById("userForm").reset(); 
+        document.getElementById("userAlert").innerHTML = "";
+        setupDefaultTime();
+        userModal.show(); 
+    }
+
+    async function loadUsersFromDevice(ip) {
+        if(!ip) return;
+        const tbody = document.getElementById("userTableBody");
+        tbody.innerHTML = `<tr><td colspan="4" class="text-center py-5"><div class="spinner-border text-primary"></div><div class="mt-2">Mengambil data dari alat...</div></td></tr>`;
+        
+        try {
+            const res = await fetch(`${API_URL}/users/?ip=${ip}`);
+            if(!res.ok) throw new Error("Gagal koneksi ke alat");
+            const data = await res.json();
+            
+            tbody.innerHTML = "";
+            if(data.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="4" class="text-center py-5 text-muted">Tidak ada user di alat ini.</td></tr>`;
+                return;
+            }
+
+            data.forEach(u => {
+                tbody.innerHTML += `
+                    <tr>
+                        <td class="ps-4 font-monospace fw-bold text-primary">${u.employeeNo}</td>
+                        <td>${u.name}</td>
+                        <td><span class="badge bg-light text-dark border">${u.userType}</span></td>
+                        <td class="text-end pe-4">
+                            <button class="btn btn-sm btn-outline-danger" onclick="delUser('${u.employeeNo}')">
+                                <i class="bi bi-trash"></i> Hapus
+                            </button>
+                        </td>
+                    </tr>`;
+            });
+        } catch(e) {
+            tbody.innerHTML = `<tr><td colspan="4" class="text-center text-danger py-5">Error: ${e.message}</td></tr>`;
+        }
+    }
+
+    document.getElementById("userForm").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const btn = document.getElementById("btnUserSave");
+        const alertBox = document.getElementById("userAlert");
+        
+        btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Broadcasting...';
+        alertBox.innerHTML = "";
+
+        const formData = new FormData();
+        formData.append("employee_no", document.getElementById("userId").value);
+        formData.append("name", document.getElementById("userName").value);
+        formData.append("start_time", document.getElementById("userStart").value + ":00");
+        formData.append("end_time", document.getElementById("userEnd").value + ":00");
+        
+        const photo = document.getElementById("userPhoto").files[0];
+        if(photo) formData.append("photo", photo);
+
+        try {
+            const res = await fetch(`${API_URL}/users/`, { method: "POST", body: formData });
+            const result = await res.json();
+            
+            if(res.ok) {
+                let reportHtml = "<ul class='mb-0 ps-3 text-start small'>";
+                if(result.broadcast_report) result.broadcast_report.forEach(r => reportHtml += `<li>${r}</li>`);
+                reportHtml += "</ul>";
+                alertBox.innerHTML = `<div class="alert alert-success mt-3">✅ Selesai!<br>${reportHtml}</div>`;
+                
+                // Refresh list jika ada device terpilih
+                refreshUserTab();
+                
+                // Auto close modal after 2s if success
+                setTimeout(() => { userModal.hide(); }, 3000);
+            } else {
+                alertBox.innerHTML = `<div class="alert alert-danger mt-3">Gagal: ${JSON.stringify(result)}</div>`;
+            }
+        } catch(e) { 
+            alertBox.innerHTML = `<div class="alert alert-danger mt-3">Error: ${e}</div>`;
+        }
+        btn.disabled = false; btn.innerText = "Simpan & Broadcast";
+    });
+
+    async function delUser(id) {
+        if(!confirm(`Yakin hapus User ${id} dari SEMUA device?`)) return;
+        const res = await fetch(`${API_URL}/users/${id}`, {method: "DELETE"});
+        const result = await res.json();
+        alert("Laporan Hapus: " + (result.broadcast_report ? result.broadcast_report.join(", ") : "OK"));
+        refreshUserTab();
+    }
+
+    // --- EVENTS ---
+    async function loadEvents() {
+        try {
+            const res = await fetch(`${API_URL}/events/`);
+            const data = await res.json();
+            const tbody = document.getElementById("eventTableBody");
+            
+            if(data.length === 0) {
+                tbody.innerHTML = "<tr><td colspan='6' class='text-center py-5 text-muted'>Belum ada log.</td></tr>";
+                return;
+            }
+
+            let html = "";
+            data.forEach(ev => {
+                const timeStr = new Date(ev.date).toLocaleTimeString('id-ID', {hour: '2-digit', minute:'2-digit', second:'2-digit'});
+                const dateStr = new Date(ev.date).toLocaleDateString('id-ID');
+                
+                let imgHtml = '<div class="img-thumb bg-light d-flex align-items-center justify-content-center text-muted"><i class="bi bi-person"></i></div>';
+                if(ev.picture_path) {
+                    const url = `http://localhost:8000/${ev.picture_path}`;
+                    imgHtml = `<img src="${url}" class="img-thumb" onclick="showPhoto('${url}')">`;
+                }
+
+                html += `
+                    <tr>
+                        <td class="ps-4">${imgHtml}</td>
+                        <td>
+                            <div class="fw-bold text-dark">${timeStr}</div>
+                            <small class="text-muted">${dateStr}</small>
+                        </td>
+                        <td>${ev.device}</td>
+                        <td class="fw-bold font-monospace text-primary">${ev.auth_id}</td>
+                        <td>
+                            <span class="badge bg-light text-dark border">🌡️ ${ev.temperature}°C</span>
+                            <span class="badge bg-light text-dark border ms-1">${ev.mask === 'Yes' ? '😷 Mask' : 'No Mask'}</span>
+                        </td>
+                        <td><span class="badge ${ev.source === 'REALTIME' ? 'bg-primary' : 'bg-warning text-dark'}">${ev.source}</span></td>
+                    </tr>`;
+            });
+            tbody.innerHTML = html;
+        } catch(e) {}
+    }
+
+    function startEventPolling() {
+        if(refreshInterval) clearInterval(refreshInterval);
+        refreshInterval = setInterval(() => {
+            if(document.getElementById('pills-event-tab').classList.contains('active')) loadEvents();
+        }, 3000);
+    }
+
+    // --- UTILS ---
+    function openDeviceModal() {
+        document.getElementById("deviceForm").reset();
+        document.getElementById("deviceId").value = "";
+        document.getElementById("deviceModalTitle").innerText = "Tambah Device";
+        document.getElementById("devAlert").innerHTML = "";
+        deviceModal.show();
+    }
+
+    function editDevice(dev) {
+        document.getElementById("deviceId").value = dev.id;
+        document.getElementById("devName").value = dev.name;
+        document.getElementById("devIp").value = dev.ip_address;
+        document.getElementById("devPort").value = dev.port;
+        document.getElementById("devUser").value = dev.username;
+        document.getElementById("devPass").value = dev.password;
+        document.getElementById("deviceModalTitle").innerText = "Edit Device";
+        document.getElementById("devAlert").innerHTML = "";
+        deviceModal.show();
+    }
+
+    document.getElementById("deviceForm").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const btn = document.getElementById("btnDevSave");
+        const id = document.getElementById("deviceId").value;
+        const alertBox = document.getElementById("devAlert");
+        btn.disabled = true; btn.innerText = "Connecting...";
+        
+        try {
+            const method = id ? "PUT" : "POST";
+            const url = id ? `${API_URL}/devices/${id}` : `${API_URL}/devices/`;
+            const res = await fetch(url, {
+                method: method, headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    name: document.getElementById("devName").value,
+                    ip_address: document.getElementById("devIp").value,
+                    port: parseInt(document.getElementById("devPort").value),
+                    username: document.getElementById("devUser").value,
+                    password: document.getElementById("devPass").value,
+                    is_active: true
+                })
+            });
+            const result = await res.json();
+            if(res.ok) { deviceModal.hide(); loadDevices(); Swal.fire({icon:'success', title:'Berhasil', timer:1500, showConfirmButton:false}); }
+            else { alertBox.innerHTML = `<div class="alert alert-danger py-2 small">${result.detail}</div>`; }
+        } catch(e) { alertBox.innerHTML = `<div class="alert alert-danger py-2 small">Error API</div>`; }
+        btn.disabled = false; btn.innerText = "Simpan & Connect";
+    });
+
+    async function delDevice(id) {
+        if(confirm("Hapus device?")) { await fetch(`${API_URL}/devices/${id}`, {method: "DELETE"}); loadDevices(); }
+    }
+
+    function showPhoto(url) { document.getElementById('previewImage').src = url; photoModal.show(); }
+
+    function setupDefaultTime() {
+        const now = new Date(); now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+        document.getElementById('userStart').value = now.toISOString().slice(0,16);
+        const future = new Date(); future.setFullYear(future.getFullYear() + 10);
+        future.setMinutes(future.getMinutes() - future.getTimezoneOffset());
+        document.getElementById('userEnd').value = future.toISOString().slice(0,16);
+    }
+</script>
+
+</body>
+</html>

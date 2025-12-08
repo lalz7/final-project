@@ -1,0 +1,34 @@
+# 1. Virtual Environment (PENTING: Jangan upload library)
+venv/
+env/
+.venv/
+
+# 2. Python Cache (Sampah kompilasi)
+__pycache__/
+*.py[cod]
+*$py.class
+
+# 3. Environment Variables (PENTING: Rahasia Password/IP)
+.env
+.env.local
+
+# 4. Database (Biasanya database lokal tidak diupload)
+*.db
+*.sqlite
+hikvision.db
+
+# 5. IDE Settings (Settingan VS Code/PyCharm pribadi)
+.vscode/
+.idea/
+
+# 6. File Upload/Temp (Hasil runtime)
+static/uploads/*
+static/temps/*
+static/images/*
+!static/uploads/.gitkeep
+!static/temps/.gitkeep
+!static/images/.gitkeep
+
+# 7. System Files
+.DS_Store
+Thumbs.db
