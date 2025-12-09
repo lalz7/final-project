@@ -7,14 +7,16 @@ class Device(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     
-    # Sesuai struktur data lama Anda
-    name = Column(String, index=True)      # device_name
+    name = Column(String, index=True)
     ip_address = Column(String, unique=True, index=True)
     port = Column(Integer, default=8000)
     username = Column(String)
     password = Column(String)
     
-    # Status Tambahan
+    # --- TAMBAHAN BARU ---
+    target_api = Column(String, nullable=True) 
+    # ---------------------
+
     is_active = Column(Boolean, default=True)
     last_seen = Column(DateTime(timezone=True), nullable=True)
     

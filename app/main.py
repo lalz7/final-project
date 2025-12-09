@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles 
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from contextlib import asynccontextmanager
 from sqlalchemy.future import select
 import os
@@ -56,7 +57,5 @@ app.include_router(users.router, prefix="/api/users", tags=["Users"])
 
 @app.get("/")
 async def root():
-    return {
-        "message": "Intelligent Middleware Running",
-        "status": "Online"
-    }
+    # Menyajikan file HTML yang ada di folder static
+    return FileResponse("static/tester.html")
