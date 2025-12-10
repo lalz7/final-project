@@ -7,34 +7,29 @@ from typing import Optional, List, Dict, Any
 from app.core.config import settings
 
 class ISAPIDriver:
-    def __init__(self, ip: str = None, port: int = None, user: str = None, password: str = None):
+    def __init__(self, ip: str, port: int = 80, user: str = "admin", password: str = "12345"):
         """
         Inisialisasi Driver ISAPI.
+        Parameter IP wajib diisi (tidak ada fallback ke config global lagi).
         """
-        self.ip = ip or settings.DEVICE_IP
+        self.ip = ip
         
-        # --- LOGIKA PORT PINTAR ---
-        # Jika port yang dikirim adalah 8000 (Port SDK), kita paksa ganti ke Port HTTP (80).
-        # Ini karena database menyimpan port SDK, tapi ISAPI butuh port Web.
-        input_port = port or settings.SDK_PORT
-        if input_port == 8000:
-            self.port = settings.HTTP_PORT  # Default 80
+        # Logika Port Pintar: Jika port 8000 (SDK), ganti ke default HTTP (80)
+        if port == settings.SDK_PORT_DEFAULT: # atau angka 8000
+             self.port = settings.HTTP_PORT_DEFAULT
         else:
-            self.port = input_port
+             self.port = port
             
-        self.user = user or settings.DEVICE_USER
-        self.password = password or settings.DEVICE_PASS
+        self.user = user
+        self.password = password
         
         self.base_url = f"http://{self.ip}:{self.port}"
         
-        # Setup Authentication Digest (Standar Hikvision)
+        # Setup Authentication
         self.auth = httpx.DigestAuth(self.user, self.password)
-        
-        # Client Async dengan Timeout 30 detik (Cukup untuk upload foto)
         self.client = httpx.AsyncClient(auth=self.auth, timeout=30.0)
 
     async def close(self):
-        """Menutup koneksi HTTP client."""
         await self.client.aclose()
 
     # ==========================================

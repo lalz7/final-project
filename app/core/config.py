@@ -3,28 +3,20 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     # App Config
-    APP_NAME: str = "Intelligent Middleware Q-Learning"
-    VERSION: str = "1.0.0"
+    APP_NAME: str = "Intelligent Middleware"
+    VERSION: str = "1.9.0"
     
     # Database (SQLite Async)
     DB_URL: str = "sqlite+aiosqlite:///./hikvision.db"
     
-    # Device Config (Login)
-    DEVICE_IP: str = "10.1.248.221"
-    DEVICE_USER: str = "admin"
-    DEVICE_PASS: str = "Hik3421@" # <-- Pastikan password ini benar
-    
-    # --- PEMISAHAN PORT (INI YANG TADI HILANG) ---
-    SDK_PORT: int = 8000  # Port C++ (Default 8000)
-    HTTP_PORT: int = 80   # Port Web/ISAPI (Default 80)
+    # --- KONFIGURASI PORT DEFAULT ---
+    # Digunakan sebagai fallback jika user tidak mengisi port saat Add Device
+    SDK_PORT_DEFAULT: int = 8000  # Port C++ (SDK)
+    HTTP_PORT_DEFAULT: int = 80   # Port Web (ISAPI)
     
     # Path ke Library SDK
+    # Pastikan path ini sesuai dengan lokasi folder lib di server Anda
     SDK_LIB_PATH: str = "/home/izlal/final-project/lib/"
-
-    # Q-Learning Hyperparameters
-    RL_ALPHA: float = 0.1
-    RL_GAMMA: float = 0.9
-    RL_EPSILON: float = 0.1
 
     class Config:
         env_file = ".env"

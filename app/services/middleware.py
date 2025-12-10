@@ -1,9 +1,8 @@
 import asyncio
 import base64
 import os
-import httpx  # Pastikan httpx terinstall (ada di requirements.txt)
+import httpx
 from datetime import datetime, timedelta
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from app.core.database import AsyncSessionLocal
 from app.models.event_log import EventLog
@@ -13,19 +12,18 @@ from app.services.sdk_driver import driver_instance
 
 class Middleware:
     def __init__(self):
-        self.isapi_driver = ISAPIDriver()
+        # Daftarkan fungsi handle_realtime_event ke SDK Driver
         print("🔗 [MIDDLEWARE] Mendaftarkan Handler ke SDK Driver...")
         driver_instance.set_global_handler(self.handle_realtime_event)
 
     async def get_device_info_by_ip(self, session, ip_address):
         """
-        [MODIFIED] Mengembalikan (name, target_api) berdasarkan IP.
+        Mencari Nama Device dan Target API berdasarkan IP Address.
         """
         try:
             result = await session.execute(select(Device).where(Device.ip_address == ip_address))
             device_obj = result.scalars().first()
             if device_obj:
-                # Kembalikan Nama dan Target API
                 return device_obj.name, device_obj.target_api
             return ip_address, None
         except Exception as e:
@@ -34,29 +32,33 @@ class Middleware:
 
     async def send_webhook(self, target_url, payload):
         """
-        [NEW] Mengirim payload ke Target API secara Asynchronous
+        Mengirim payload ke Target API (Tanpa simpan status ke DB).
         """
         if not target_url:
             return
 
         async with httpx.AsyncClient(timeout=10.0) as client:
             try:
-                print(f"🚀 [WEBHOOK] Mengirim event ke {target_url}...")
+                # print(f"🚀 [WEBHOOK] Mengirim event ke {target_url}...")
                 resp = await client.post(target_url, json=payload)
                 if resp.status_code in [200, 201]:
-                    print(f"✅ [WEBHOOK] Sukses terkirim: {resp.status_code}")
+                    # print(f"✅ [WEBHOOK] Sukses: {resp.status_code}")
+                    pass
                 else:
                     print(f"⚠️ [WEBHOOK] Gagal: {resp.status_code} - {resp.text[:50]}")
             except Exception as e:
                 print(f"❌ [WEBHOOK] Error Connection: {e}")
 
     async def save_event_to_db(self, data: dict):
+        """
+        Menyimpan event ke database lokal dan memicu pengiriman webhook.
+        """
         if not data.get('authId'): 
             return
 
         async with AsyncSessionLocal() as session:
             try:
-                # 1. Ambil Nama Device DAN Target API
+                # 1. Cari Info Device
                 device_name, target_api = await self.get_device_info_by_ip(session, data['device'])
 
                 # 2. Simpan ke Database Lokal
@@ -66,54 +68,89 @@ class Middleware:
                     date=data['date'],
                     picture_path=data['picture'],
                     temperature=data.get('temperature', 0.0),
-                    mask=data.get('mask', 'Unknown'),
+                    # mask dihapus
                     source=data['source']
                 )
+                
                 session.add(new_event)
                 await session.commit()
                 
-                temp_info = f" | 🌡️ {data.get('temperature')}°C" if data.get('temperature') else ""
-                print(f"💾 [DB] Tersimpan: {device_name} | User {data['authId']} {temp_info}")
+                # Log di terminal
+                temp_str = f"| 🌡️ {data.get('temperature')}" if data.get('temperature') else ""
+                print(f"💾 [DB] Tersimpan: {device_name} | User {data['authId']} {temp_str} | Src: {data['source']}")
 
-                # 3. [NEW] KIRIM KE TARGET API (Jika ada)
+                # 3. Proses Webhook (Jika ada Target API)
                 if target_api:
-                    # A. Proses Gambar ke Base64
                     image_base64 = None
                     if data['picture'] and os.path.exists(data['picture']):
                         try:
-                            # Baca file gambar secara binary
                             with open(data['picture'], "rb") as img_file:
                                 image_base64 = base64.b64encode(img_file.read()).decode('utf-8')
                         except Exception as img_err:
                             print(f"⚠️ [IMG] Gagal convert base64: {img_err}")
 
-                    # B. Susun Payload (4 Poin)
                     webhook_payload = {
                         "device": device_name,
                         "authId": data['authId'],
-                        "date": data['date'],     # Format sudah ISO dari sdk_driver
-                        "picture": image_base64   # String Base64 atau None
+                        "date": data['date'],
+                        "picture": image_base64,
+                        "temperature": data.get('temperature', 0.0)
                     }
 
-                    # C. Kirim Async (Fire and Forget agar tidak memblokir)
-                    # Kita gunakan asyncio.create_task agar berjalan di background
+                    # Kirim Async (Tanpa passing event_id)
                     asyncio.create_task(self.send_webhook(target_api, webhook_payload))
 
             except Exception as e:
-                print(f"❌ [DB] Gagal Simpan/Kirim: {e}")
+                print(f"❌ [DB] Gagal Simpan Event: {e}")
                 await session.rollback()
 
     async def run_catchup(self):
+        """
+        Fungsi Catch-up: Mengambil log dari SEMUA perangkat aktif di database.
+        """
         print("🔄 [MIDDLEWARE] Menjalankan Catch-up (ISAPI)...")
         now = datetime.now()
         start = now - timedelta(hours=24) 
-        events = await self.isapi_driver.get_events(start, now)
-        if events:
-            print(f"   📥 Memproses {len(events)} event catch-up...")
-            for e in events:
-                await self.save_event_to_db(e)
-        else:
-            print("   (Tidak ada data catch-up baru)")
+        
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(select(Device).where(Device.is_active == True))
+            active_devices = result.scalars().all()
+
+            if not active_devices:
+                print("   (Tidak ada device aktif untuk catch-up)")
+                return
+
+            for dev in active_devices:
+                # print(f"   🔎 Cek log tertinggal di: {dev.name}...")
+                
+                # Inisialisasi Driver ISAPI per device
+                temp_driver = ISAPIDriver(ip=dev.ip_address, port=dev.port, user=dev.username, password=dev.password)
+                
+                try:
+                    events = await temp_driver.get_events(start, now)
+                    
+                    if events:
+                        print(f"   📥 Ditemukan {len(events)} log di {dev.name}. Menyimpan...")
+                        
+                        for e in events:
+                            # Mapping Data ISAPI -> App
+                            mapped_data = {
+                                "device": dev.ip_address,       
+                                "authId": e.get("employeeNoString", "Unknown"), 
+                                "date": e.get("time", ""),      
+                                "picture": None,                
+                                "temperature": 0.0,             
+                                "source": "CATCHUP"             
+                            }
+                            await self.save_event_to_db(mapped_data)
+                    # else:
+                        # print(f"   (Bersih, tidak ada log tertinggal di {dev.name})")
+
+                except Exception as e:
+                    print(f"   ❌ Gagal catch-up {dev.name}: {e}")
+                finally:
+                    await temp_driver.close()
+
         print("✅ [MIDDLEWARE] Catch-up Selesai.")
 
     def handle_realtime_event(self, event_data):
@@ -128,4 +165,5 @@ class Middleware:
         else:
             loop.run_until_complete(self.save_event_to_db(event_data))
 
+# Instansiasi Global
 middleware = Middleware()
