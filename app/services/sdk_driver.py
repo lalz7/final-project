@@ -25,7 +25,7 @@ try:
 except OSError as e:
     print(f"❌ [SDK-FATAL] Gagal load library: {e}")
 
-# --- 2. DEFINISI STRUKTUR (Sama seperti sebelumnya) ---
+# --- 2. DEFINISI STRUKTUR ---
 class NET_DVR_USER_LOGIN_INFO(Structure):
     _fields_ = [("sDeviceAddress", c_char * 129), ("byUseTransport", c_byte), ("wPort", c_uint16), ("sUserName", c_char * 64), ("sPassword", c_char * 64), ("bUseAsynLogin", c_int), ("byProxyType", c_byte), ("byUseUTCTime", c_byte), ("byLoginMode", c_byte), ("byHttps", c_byte), ("iProxyID", c_int), ("byVerifyMode", c_byte), ("byRes3", c_byte * 119)]
 
@@ -73,7 +73,6 @@ class SDKDriver:
                 buffer = bytearray(raw_data)
 
                 # --- BEDAH MEMORI ---
-                
                 # A. Waktu (Offset 12)
                 year = struct.unpack('i', buffer[12:16])[0]
                 month = struct.unpack('i', buffer[16:20])[0]

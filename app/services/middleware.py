@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import os
+import uuid  
 import httpx
 from datetime import datetime, timedelta
 from sqlalchemy.future import select
@@ -17,9 +18,6 @@ class Middleware:
         driver_instance.set_global_handler(self.handle_realtime_event)
 
     async def get_device_info_by_ip(self, session, ip_address):
-        """
-        Mencari Nama Device dan Target API berdasarkan IP Address.
-        """
         try:
             result = await session.execute(select(Device).where(Device.ip_address == ip_address))
             device_obj = result.scalars().first()
@@ -31,55 +29,50 @@ class Middleware:
             return ip_address, None
 
     async def send_webhook(self, target_url, payload):
-        """
-        Mengirim payload ke Target API (Tanpa simpan status ke DB).
-        """
-        if not target_url:
-            return
-
+        if not target_url: return
         async with httpx.AsyncClient(timeout=10.0) as client:
             try:
-                # print(f"🚀 [WEBHOOK] Mengirim event ke {target_url}...")
                 resp = await client.post(target_url, json=payload)
-                if resp.status_code in [200, 201]:
-                    # print(f"✅ [WEBHOOK] Sukses: {resp.status_code}")
-                    pass
-                else:
+                if resp.status_code != 200 and resp.status_code != 201:
                     print(f"⚠️ [WEBHOOK] Gagal: {resp.status_code} - {resp.text[:50]}")
             except Exception as e:
                 print(f"❌ [WEBHOOK] Error Connection: {e}")
 
     async def save_event_to_db(self, data: dict):
-        """
-        Menyimpan event ke database lokal dan memicu pengiriman webhook.
-        """
-        if not data.get('authId'): 
-            return
+        if not data.get('authId'): return
 
         async with AsyncSessionLocal() as session:
             try:
                 # 1. Cari Info Device
                 device_name, target_api = await self.get_device_info_by_ip(session, data['device'])
 
-                # 2. Simpan ke Database Lokal
+                # 2. Cek Duplikasi
+                q_dup = select(EventLog.id).where(
+                    EventLog.device == device_name,
+                    EventLog.auth_id == data['authId'],
+                    EventLog.date == data['date'] 
+                )
+                res_dup = await session.execute(q_dup)
+                if res_dup.scalars().first():
+                    return
+
+                # 3. Simpan ke Database Lokal
                 new_event = EventLog(
                     device=device_name,
                     auth_id=data['authId'],
                     date=data['date'],
                     picture_path=data['picture'],
                     temperature=data.get('temperature', 0.0),
-                    # mask dihapus
                     source=data['source']
                 )
                 
                 session.add(new_event)
                 await session.commit()
                 
-                # Log di terminal
                 temp_str = f"| 🌡️ {data.get('temperature')}" if data.get('temperature') else ""
                 print(f"💾 [DB] Tersimpan: {device_name} | User {data['authId']} {temp_str} | Src: {data['source']}")
 
-                # 3. Proses Webhook (Jika ada Target API)
+                # 4. Proses Webhook
                 if target_api:
                     image_base64 = None
                     if data['picture'] and os.path.exists(data['picture']):
@@ -96,8 +89,6 @@ class Middleware:
                         "picture": image_base64,
                         "temperature": data.get('temperature', 0.0)
                     }
-
-                    # Kirim Async (Tanpa passing event_id)
                     asyncio.create_task(self.send_webhook(target_api, webhook_payload))
 
             except Exception as e:
@@ -106,11 +97,11 @@ class Middleware:
 
     async def run_catchup(self):
         """
-        Fungsi Catch-up: Mengambil log dari SEMUA perangkat aktif di database.
+        Fungsi Catch-up: Mengambil log 1 JAM TERAKHIR + DOWNLOAD GAMBAR.
         """
-        print("🔄 [MIDDLEWARE] Menjalankan Catch-up (ISAPI)...")
+        print("🔄 [MIDDLEWARE] Menjalankan Catch-up (1 Jam Terakhir)...")
         now = datetime.now()
-        start = now - timedelta(hours=24) 
+        start = now - timedelta(hours=1) 
         
         async with AsyncSessionLocal() as session:
             result = await session.execute(select(Device).where(Device.is_active == True))
@@ -121,30 +112,42 @@ class Middleware:
                 return
 
             for dev in active_devices:
-                # print(f"   🔎 Cek log tertinggal di: {dev.name}...")
-                
-                # Inisialisasi Driver ISAPI per device
                 temp_driver = ISAPIDriver(ip=dev.ip_address, port=dev.port, user=dev.username, password=dev.password)
                 
                 try:
                     events = await temp_driver.get_events(start, now)
                     
                     if events:
-                        print(f"   📥 Ditemukan {len(events)} log di {dev.name}. Menyimpan...")
-                        
+                        print(f"   📥 {dev.name}: Ditarik {len(events)} log mentah. Memproses...")
                         for e in events:
-                            # Mapping Data ISAPI -> App
+                            raw_time = e.get("time", "")
+                            clean_date = raw_time[:19] 
+                            final_picture_path = None
+                            pic_url = e.get("pictureURL")
+                            
+                            if pic_url:
+                                img_bytes = await temp_driver.get_picture(pic_url)
+                                if img_bytes:
+                                    filename = f"catchup_{uuid.uuid4().hex[:8]}.jpg"
+                                    os.makedirs("static/images", exist_ok=True)
+                                    full_path = f"static/images/{filename}"
+                                    
+                                    try:
+                                        with open(full_path, "wb") as f:
+                                            f.write(img_bytes)
+                                        final_picture_path = full_path
+                                    except Exception as err:
+                                        print(f"   ⚠️ Gagal tulis URL: {err}")
+
                             mapped_data = {
                                 "device": dev.ip_address,       
                                 "authId": e.get("employeeNoString", "Unknown"), 
-                                "date": e.get("time", ""),      
-                                "picture": None,                
+                                "date": clean_date,      
+                                "picture": final_picture_path,
                                 "temperature": 0.0,             
                                 "source": "CATCHUP"             
                             }
                             await self.save_event_to_db(mapped_data)
-                    # else:
-                        # print(f"   (Bersih, tidak ada log tertinggal di {dev.name})")
 
                 except Exception as e:
                     print(f"   ❌ Gagal catch-up {dev.name}: {e}")

@@ -15,7 +15,7 @@ from app.api import devices, events, users
 from app.services.sdk_driver import driver_instance
 from app.services.middleware import middleware 
 
-# [REVISI] Scheduler Pintar (Sync ke Menit 00)
+# --- SCHEDULER TASK ---
 async def periodic_catchup_task():
     """
     Menjalankan proses catch-up tepat setiap pergantian jam (XX:00:00).
@@ -25,13 +25,12 @@ async def periodic_catchup_task():
         now = datetime.now()
         
         # 1. Hitung target waktu jam berikutnya (Menit 0, Detik 0)
-        # Jika sekarang 10:15, targetnya 11:00
         next_hour = (now + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
         
         # 2. Hitung berapa detik harus tidur
         sleep_seconds = (next_hour - now).total_seconds()
         
-        print(f"⏰ [SCHEDULER] Menunggu {int(sleep_seconds)} detik sampai jam {next_hour.strftime('%H:%M')} untuk Catch-up...")
+        # print(f"⏰ [SCHEDULER] Menunggu {int(sleep_seconds)} detik sampai jam {next_hour.strftime('%H:%M')} untuk Catch-up...")
         
         # 3. Tidur sampai waktu target tercapai
         await asyncio.sleep(sleep_seconds)
@@ -43,16 +42,16 @@ async def periodic_catchup_task():
         except Exception as e:
             print(f"⚠️ [SCHEDULER] Error saat catch-up: {e}")
         
-        # 5. Beri jeda sedikit (misal 5 detik) agar tidak double-run di detik yang sama, 
-        # lalu loop akan hitung jam berikutnya lagi.
+        # 5. Jeda singkat agar tidak double-run
         await asyncio.sleep(5)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print("🚀 [SYSTEM] Starting Up Intelligent Middleware...")
+    print(f"🚀 [SYSTEM] Starting Up {settings.APP_NAME} v{settings.VERSION}...")
     
     os.makedirs("static/images", exist_ok=True)
 
+    # 1. Login ke Device yang ada di Database
     print("🔄 [SYSTEM] Loading Devices from Database...")
     async with AsyncSessionLocal() as db:
         try:
@@ -62,6 +61,7 @@ async def lifespan(app: FastAPI):
             count = 0
             for dev in active_devices:
                 print(f"   ➥ Connecting to: {dev.name} ({dev.ip_address})")
+                # Login SDK
                 success = driver_instance.login(dev.ip_address, dev.username, dev.password, dev.port)
                 if success: count += 1
                 
@@ -69,11 +69,11 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             print(f"⚠️ [SYSTEM] Gagal load device: {e}")
 
-    # [BARU] Jalankan Catch-up Awal (Saat aplikasi baru nyala)
+    # 2. Jalankan Catch-up Awal (Tarik data saat aplikasi baru nyala)
     print("🔄 [SYSTEM] Menjalankan Initial Catch-up...")
     asyncio.create_task(middleware.run_catchup())
 
-    # [BARU] Jalankan Scheduler Presisi
+    # 3. Jalankan Scheduler Otomatis (Background Loop)
     asyncio.create_task(periodic_catchup_task())
 
     yield
