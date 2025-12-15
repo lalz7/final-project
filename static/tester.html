@@ -182,7 +182,7 @@
                         <h4 class="fw-bold mb-1">User Management</h4>
                         <div class="d-flex gap-2">
                             <select class="form-select w-auto shadow-sm" id="deviceSelect" onchange="loadUsersFromDevice(this.value)"><option value="">-- Pilih Device --</option></select>
-                            <button class="btn btn-success shadow-sm" onclick="openUserModal()"><i class="bi bi-cloud-arrow-up-fill me-2"></i>Broadcast User</button>
+                            <button class="btn btn-primary shadow-sm" onclick="openUserModal()"><i class="bi bi-cloud-arrow-up-fill me-2"></i>Broadcast User</button>
                         </div>
                     </div>
                     <div class="card border-0 shadow-sm rounded-4 overflow-hidden">
@@ -191,7 +191,7 @@
                                 <table class="table table-hover align-middle mb-0">
                                     <thead class="bg-light sticky-top" style="z-index: 1;">
                                         <tr>
-                                            <th class="ps-4 py-3">ID Karyawan</th>
+                                            <th class="ps-4 py-3">User ID</th>
                                             <th class="py-3">Nama Lengkap</th>
                                             <th class="text-end pe-4 py-3">Aksi</th>
                                         </tr>
@@ -323,7 +323,7 @@
                 <form id="userForm">
                     <div class="alert alert-warning small mb-3"><i class="bi bi-info-circle me-1"></i> Data akan dikirim ke <b>SEMUA</b> device yang aktif.</div>
                     <div class="row mb-3">
-                        <div class="col-4"><label class="form-label small fw-bold text-secondary">ID (NIK)</label><input type="text" class="form-control font-mono" id="userId" required></div>
+                        <div class="col-4"><label class="form-label small fw-bold text-secondary">ID</label><input type="text" class="form-control font-mono" id="userId" required></div>
                         <div class="col-8"><label class="form-label small fw-bold text-secondary">NAMA LENGKAP</label><input type="text" class="form-control" id="userName" required></div>
                     </div>
                     <div class="mb-3"><label class="form-label small fw-bold text-secondary">FOTO WAJAH (JPG)</label><input type="file" class="form-control" id="userPhoto" accept="image/jpeg"></div>
